@@ -220,7 +220,7 @@ Synopsis:
 		gojq.WithVariables(cli.argnames),
 		gojq.WithFunction("debug", 0, 0, cli.funcDebug),
 		gojq.WithFunction("stderr", 0, 0, cli.funcStderr),
-		gojq.WithFunction("sh", 0, 30, cli.funcExec),
+		gojq.WithFunction("sh", 1, 1, cli.funcExec),
 		gojq.WithFunction("input_filename", 0, 0,
 			func(interface{}, []interface{}) interface{} {
 				if fname := iter.Name(); fname != "" {
