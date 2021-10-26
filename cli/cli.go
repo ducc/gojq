@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -219,6 +220,7 @@ Synopsis:
 		gojq.WithVariables(cli.argnames),
 		gojq.WithFunction("debug", 0, 0, cli.funcDebug),
 		gojq.WithFunction("stderr", 0, 0, cli.funcStderr),
+		gojq.WithFunction("sh", 0, 30, cli.funcExec),
 		gojq.WithFunction("input_filename", 0, 0,
 			func(interface{}, []interface{}) interface{} {
 				if fname := iter.Name(); fname != "" {
@@ -420,6 +422,19 @@ func (cli *cli) funcDebug(v interface{}, _ []interface{}) interface{} {
 func (cli *cli) funcStderr(v interface{}, _ []interface{}) interface{} {
 	newEncoder(false, 0).marshal(v, cli.errStream)
 	return v
+}
+
+func (cli *cli) funcExec(v interface{}, a []interface{}) interface{} {
+	args := strings.Split(a[0].(string), " ")
+	cmd := exec.Command(args[0], args[1:]...)
+
+	output, err := cmd.Output()
+	if err != nil {
+		cli.errStream.Write([]byte(err.Error()))
+		return nil
+	}
+
+	return string(output)
 }
 
 func (cli *cli) printError(err error) {
