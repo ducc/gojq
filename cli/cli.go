@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -10,6 +11,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/itchyny/go-flags"
 	"github.com/mattn/go-isatty"
 
@@ -221,6 +223,8 @@ Synopsis:
 		gojq.WithFunction("debug", 0, 0, cli.funcDebug),
 		gojq.WithFunction("stderr", 0, 0, cli.funcStderr),
 		gojq.WithFunction("sh", 1, 1, cli.funcExec),
+		gojq.WithFunction("fan_out", 1, 1, cli.funcFanOut),
+		gojq.WithFunction("fan_in", 0, 0, cli.funcFanIn),
 		gojq.WithFunction("input_filename", 0, 0,
 			func(interface{}, []interface{}) interface{} {
 				if fname := iter.Name(); fname != "" {
@@ -435,6 +439,44 @@ func (cli *cli) funcExec(v interface{}, a []interface{}) interface{} {
 	}
 
 	return string(output)
+}
+
+var fanOutChans = make(map[string]<-chan interface{})
+
+func (cli *cli) funcFanOut(v interface{}, a []interface{}) interface{} {
+	results := make(chan interface{})
+
+	go func() {
+		stdin, err := json.Marshal(v)
+		if err != nil {
+			cli.errStream.Write([]byte(err.Error()))
+			return
+		}
+
+		args := []string{"sh", "-c", "echo '" + string(stdin) + "' | go run cmd/gojq/main.go -r '" + a[0].(string) + "'"}
+		cmd := exec.Command(args[0], args[1:]...)
+		output, err := cmd.Output()
+		if err != nil {
+			cli.errStream.Write([]byte(err.Error()))
+			return
+		}
+
+		results <- string(output)
+	}()
+
+	threadID := uuid.New().String()
+
+	fanOutChans[threadID] = results
+
+	return threadID
+}
+
+func (cli *cli) funcFanIn(v interface{}, a []interface{}) interface{} {
+	results := fanOutChans[v.(string)]
+
+	result := <-results
+
+	return result
 }
 
 func (cli *cli) printError(err error) {
